@@ -21,7 +21,9 @@ class AppState: ObservableObject {
     @Published var isOS26: Bool = true
 
     init() {
-        self.isPlus = UserDefaults.standard.bool(forKey: "isPlus")
+        // Disable License Check - only for personal builds
+        self.isPlus = true
+        // self.isPlus = UserDefaults.standard.bool(forKey: "isPlus")
 
         // Load from UserDefaults
         let name = UserDefaults.standard.string(forKey: "deviceName") ?? (Host.current().localizedName ?? "My Mac")
@@ -59,11 +61,11 @@ class AppState: ObservableObject {
             .string(forKey: "notificationSound") ?? "default"
         self.dismissNotif = UserDefaults.standard
             .bool(forKey: "dismissNotif")
-        
+
         // Default to true for backward compatibility - existing behavior should continue
         let savedNowPlayingStatus = UserDefaults.standard.object(forKey: "sendNowPlayingStatus")
         self.sendNowPlayingStatus = savedNowPlayingStatus == nil ? true : UserDefaults.standard.bool(forKey: "sendNowPlayingStatus")
-        
+
         if isClipboardSyncEnabled {
             startClipboardMonitoring()
         }
@@ -120,7 +122,7 @@ class AppState: ObservableObject {
                 // Validate pinned apps when connecting to a device
                 validatePinnedApps()
             }
-            
+
             // Automatically switch to the appropriate tab when device connection state changes
             if device == nil {
                 selectedTab = .qr
@@ -407,7 +409,7 @@ class AppState: ObservableObject {
         let content = UNMutableNotificationContent()
         content.title = "\(appName) - \(title)"
         content.body = body
-        
+
         // Use custom sound if selected, otherwise use default
         if notificationSound == "default" {
             content.sound = .default
@@ -717,43 +719,43 @@ class AppState: ObservableObject {
             }
         }
     }
-    
+
     /// Revalidates the current network adapter selection and falls back to auto if no longer valid
     func revalidateNetworkAdapter() {
         let currentSelection = selectedNetworkAdapterName
         let validated = validateAndGetNetworkAdapter(savedName: currentSelection)
-        
+
         if currentSelection != validated {
             print("[state] Network adapter changed from '\(currentSelection ?? "auto")' to '\(validated ?? "auto")'")
             selectedNetworkAdapterName = validated
             shouldRefreshQR = true
         }
     }
-    
+
     /// Validates a saved network adapter name and returns it if available with valid IP, otherwise returns nil (auto)
     private func validateAndGetNetworkAdapter(savedName: String?) -> String? {
         guard let savedName = savedName else {
             print("[state] No saved network adapter, using auto selection")
             return nil // Auto mode
         }
-        
+
         // Get available adapters from WebSocketServer
         let availableAdapters = WebSocketServer.shared.getAvailableNetworkAdapters()
-        
+
         // Check if the saved adapter is still available
         guard availableAdapters
             .first(where: { $0.name == savedName }) != nil else {
             print("[state] Saved network adapter '\(savedName)' not found, falling back to auto")
             return nil // Fall back to auto
         }
-        
+
         // Verify the adapter has a valid IP address
         let ipAddress = WebSocketServer.shared.getLocalIPAddress(adapterName: savedName)
         guard let validIP = ipAddress, !validIP.isEmpty, validIP != "127.0.0.1" else {
             print("[state] Saved network adapter '\(savedName)' has no valid IP (\(ipAddress ?? "nil")), falling back to auto")
             return nil // Fall back to auto
         }
-        
+
         print("[state] Using saved network adapter: \(savedName) -> \(validIP)")
         return savedName
     }
