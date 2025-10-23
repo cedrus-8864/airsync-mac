@@ -11,11 +11,11 @@ jobs:
     runs-on: macos-latest
 
     env:
-      SCHEME: airsync-mac # must be a Shared scheme
+      SCHEME: AirSync # must be a Shared scheme
       CONFIG: Release
       DERIVED_DATA: build
-      APP_NAME: Airsync # YourApp.app
-      DMG_NAME: Airsync-macOS.dmg
+      APP_NAME: AirSync # YourApp.app
+      DMG_NAME: AirSync-macOS.dmg
 
     steps:
       - name: Checkout
