@@ -1,0 +1,55 @@
+name: macOS DMG Release (unsigned)
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+jobs:
+  build-and-release:
+    runs-on: macos-latest
+
+    env:
+      SCHEME: airsync-mac # must be a Shared scheme
+      CONFIG: Release
+      DERIVED_DATA: build
+      APP_NAME: Airsync # YourApp.app
+      DMG_NAME: Airsync-macOS.dmg
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select latest Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest
+
+      - name: Build (Release)
+        run: |
+          xcodebuild \
+            -scheme "$SCHEME" \
+            -configuration "$CONFIG" \
+            -derivedDataPath "$DERIVED_DATA" \
+            clean build
+
+      - name: Create DMG (hdiutil)
+        run: |
+          APP="$DERIVED_DATA/Build/Products/$CONFIG/${APP_NAME}.app"
+          hdiutil create -volname "$APP_NAME" -srcfolder "$APP" -ov -format UDZO "$DMG_NAME"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.DMG_NAME }}
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload artifact (optional)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.DMG_NAME }}
+          path: ${{ env.DMG_NAME }}
