@@ -13,7 +13,6 @@ struct TransfersView: View {
         VStack(alignment: .leading, spacing: 8) {
             if sessions.isEmpty {
                     VStack {
-                        Spacer()
 
                         if !UIStyle.pretendOlderOS, #available(macOS 26.0, *) {
                             Text("BETA")
@@ -31,7 +30,6 @@ struct TransfersView: View {
                         Label(L("transfers.empty"), systemImage: "tray.and.arrow.up")
                             .padding()
 
-                        Spacer()
                     }
             } else {
                 List {
@@ -39,7 +37,6 @@ struct TransfersView: View {
                         TransferRow(session: session)
                             .padding(.vertical, 6)
                     }
-                    Spacer(minLength: 100)
                 }
                 .scrollContentBackground(.hidden)
                 .background(.clear)

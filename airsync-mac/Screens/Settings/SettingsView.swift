@@ -41,7 +41,7 @@ struct SettingsView: View {
                         .onChange(of: appState.selectedNetworkAdapterName) { _, _ in
                             // Update IP address immediately
                             currentIPAddress = WebSocketServer.shared.getLocalIPAddress(adapterName: appState.selectedNetworkAdapterName) ?? "N/A"
-                            
+
                             WebSocketServer.shared.stop()
                             if let port = UInt16(port) {
                                 WebSocketServer.shared.start(port: port)
@@ -114,32 +114,10 @@ struct SettingsView: View {
                         }
 
                         HStack{
-                            Label("Toolbar contrast", systemImage: "uiwindow.split.2x1")
-                            Spacer()
-                            Toggle("", isOn: $appState.toolbarContrast)
-                                .toggleStyle(.switch)
-                        }
-
-                        HStack{
                             Label("Hide Dock Icon", systemImage: "dock.rectangle")
                             Spacer()
                             Toggle("", isOn: $appState.hideDockIcon)
                                 .toggleStyle(.switch)
-                        }
-
-                        HStack{
-                            Label("Dock Size", systemImage: "rectangle.dock")
-                            Spacer()
-                            Slider(
-                                value: $appState.dockSize,
-                                in: 32...64,
-                                step: 4
-                            )
-                            .frame(width: 200)
-                            
-                            Text("\(Int(appState.dockSize))px")
-                                .font(.caption)
-                                .frame(width: 40, alignment: .trailing)
                         }
 
                         HStack{
@@ -204,7 +182,6 @@ struct SettingsView: View {
                 }
                 .padding()
 
-                Spacer(minLength: 100 + (appState.dockSize - 48))
             }
         .frame(minWidth: 300)
         .onAppear {
