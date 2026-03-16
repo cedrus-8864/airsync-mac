@@ -29,7 +29,10 @@ jobs:
         run: |
           set -o pipefail
           xcodebuild -scheme "AirSync Self Compiled" -configuration "Self Compiled" clean build \
-            CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO | xcpretty
+            CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO \
+            ASSETCATALOG_COMPILER_SKIP_APP_STORE_DEPLOYMENT=YES \
+            ONLY_ACTIVE_ARCH=YES \
+            2>&1 | tee build.log | xcpretty; EXIT=${PIPESTATUS[0]}; if [ $EXIT -ne 0 ]; then grep -E "error:|warning:" build.log | tail -40; exit $EXIT; fi
 
       - name: Archive Build Artifacts
         if: success()
@@ -37,6 +40,7 @@ jobs:
           mkdir -p build-artifacts
           BUILD_DIR=$(xcodebuild -scheme "AirSync Self Compiled" -configuration "Self Compiled" \
             CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO \
+            ASSETCATALOG_COMPILER_SKIP_APP_STORE_DEPLOYMENT=YES ONLY_ACTIVE_ARCH=YES \
             -showBuildSettings | grep -m 1 '^ *BUILD_DIR' | awk '{print $3}')
           cp -R "$BUILD_DIR/Self Compiled/"* build-artifacts/
         shell: bash
