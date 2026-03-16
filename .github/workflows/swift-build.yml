@@ -33,6 +33,9 @@ jobs:
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGN_STYLE=Manual \
+            DEVELOPMENT_TEAM="" \
+            MACOSX_DEPLOYMENT_TARGET=26.0 \
             ASSETCATALOG_COMPILER_SKIP_APP_STORE_DEPLOYMENT=YES \
             ASSETCATALOG_COMPILER_OPTIMIZATION=nothing \
             ONLY_ACTIVE_ARCH=YES
@@ -46,6 +49,7 @@ jobs:
             -configuration "Self Compiled" \
             -destination "platform=macOS,arch=arm64" \
             CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM="" MACOSX_DEPLOYMENT_TARGET=26.0 \
             ASSETCATALOG_COMPILER_SKIP_APP_STORE_DEPLOYMENT=YES ONLY_ACTIVE_ARCH=YES \
             -showBuildSettings | grep -m 1 '^ *BUILD_DIR' | awk '{print $3}')
           cp -R "$BUILD_DIR/Self Compiled/"* build-artifacts/
