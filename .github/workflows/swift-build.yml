@@ -22,23 +22,29 @@ jobs:
         with:
           xcode-version: latest
 
-      - name: Install xcpretty
-        run: gem install xcpretty
-
       - name: Build
         run: |
           set -o pipefail
-          xcodebuild -scheme "AirSync Self Compiled" -configuration "Self Compiled" clean build \
-            CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO \
+          xcodebuild \
+            -scheme "AirSync Self Compiled" \
+            -configuration "Self Compiled" \
+            -destination "platform=macOS,arch=arm64" \
+            clean build \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
             ASSETCATALOG_COMPILER_SKIP_APP_STORE_DEPLOYMENT=YES \
-            ONLY_ACTIVE_ARCH=YES \
-            2>&1 | tee build.log | xcpretty; EXIT=${PIPESTATUS[0]}; if [ $EXIT -ne 0 ]; then grep -E "error:|warning:" build.log | tail -40; exit $EXIT; fi
+            ASSETCATALOG_COMPILER_OPTIMIZATION=nothing \
+            ONLY_ACTIVE_ARCH=YES
 
       - name: Archive Build Artifacts
         if: success()
         run: |
           mkdir -p build-artifacts
-          BUILD_DIR=$(xcodebuild -scheme "AirSync Self Compiled" -configuration "Self Compiled" \
+          BUILD_DIR=$(xcodebuild \
+            -scheme "AirSync Self Compiled" \
+            -configuration "Self Compiled" \
+            -destination "platform=macOS,arch=arm64" \
             CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO \
             ASSETCATALOG_COMPILER_SKIP_APP_STORE_DEPLOYMENT=YES ONLY_ACTIVE_ARCH=YES \
             -showBuildSettings | grep -m 1 '^ *BUILD_DIR' | awk '{print $3}')
