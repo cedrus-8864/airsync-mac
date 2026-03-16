@@ -10,6 +10,8 @@ on:
 jobs:
   build:
     runs-on: macos-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
       - name: Checkout repository
@@ -26,31 +28,33 @@ jobs:
       - name: Build Debug
         run: |
           set -o pipefail
-          xcodebuild -scheme AirSync -configuration Debug clean build \
-            CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO | xcpretty
+          xcodebuild -scheme "AirSync Self Compiled" -configuration Debug clean build \
+            CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO | xcpretty
 
       - name: Build Release
         run: |
           set -o pipefail
-          xcodebuild -scheme AirSync -configuration Release clean build \
-            CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO | xcpretty
+          xcodebuild -scheme "AirSync Self Compiled" -configuration Release clean build \
+            CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO | xcpretty
 
       - name: Archive Debug Build Artifacts
         if: success()
         run: |
           mkdir -p build-artifacts/Debug
-          cp -R "$(xcodebuild -scheme AirSync -configuration Debug \
-            CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO \
-            -showBuildSettings | grep -m 1 BUILD_DIR | awk '{print $3}')/Debug/"* build-artifacts/Debug/
+          BUILD_DIR=$(xcodebuild -scheme "AirSync Self Compiled" -configuration Debug \
+            CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO \
+            -showBuildSettings | grep -m 1 '^ *BUILD_DIR' | awk '{print $3}')
+          cp -R "$BUILD_DIR/Debug/"* build-artifacts/Debug/
         shell: bash
 
       - name: Archive Release Build Artifacts
         if: success()
         run: |
           mkdir -p build-artifacts/Release
-          cp -R "$(xcodebuild -scheme AirSync -configuration Release \
-            CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO \
-            -showBuildSettings | grep -m 1 BUILD_DIR | awk '{print $3}')/Release/"* build-artifacts/Release/
+          BUILD_DIR=$(xcodebuild -scheme "AirSync Self Compiled" -configuration Release \
+            CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO \
+            -showBuildSettings | grep -m 1 '^ *BUILD_DIR' | awk '{print $3}')
+          cp -R "$BUILD_DIR/Release/"* build-artifacts/Release/
         shell: bash
 
       - name: Upload Debug Build Artifacts
