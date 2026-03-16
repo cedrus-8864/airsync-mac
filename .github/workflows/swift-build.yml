@@ -25,46 +25,24 @@ jobs:
       - name: Install xcpretty
         run: gem install xcpretty
 
-      - name: Build Debug
+      - name: Build
         run: |
           set -o pipefail
-          xcodebuild -scheme "AirSync Self Compiled" -configuration Debug clean build \
+          xcodebuild -scheme "AirSync Self Compiled" -configuration "Self Compiled" clean build \
             CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO | xcpretty
 
-      - name: Build Release
-        run: |
-          set -o pipefail
-          xcodebuild -scheme "AirSync Self Compiled" -configuration Release clean build \
-            CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO | xcpretty
-
-      - name: Archive Debug Build Artifacts
+      - name: Archive Build Artifacts
         if: success()
         run: |
-          mkdir -p build-artifacts/Debug
-          BUILD_DIR=$(xcodebuild -scheme "AirSync Self Compiled" -configuration Debug \
+          mkdir -p build-artifacts
+          BUILD_DIR=$(xcodebuild -scheme "AirSync Self Compiled" -configuration "Self Compiled" \
             CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO \
             -showBuildSettings | grep -m 1 '^ *BUILD_DIR' | awk '{print $3}')
-          cp -R "$BUILD_DIR/Debug/"* build-artifacts/Debug/
+          cp -R "$BUILD_DIR/Self Compiled/"* build-artifacts/
         shell: bash
 
-      - name: Archive Release Build Artifacts
-        if: success()
-        run: |
-          mkdir -p build-artifacts/Release
-          BUILD_DIR=$(xcodebuild -scheme "AirSync Self Compiled" -configuration Release \
-            CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO \
-            -showBuildSettings | grep -m 1 '^ *BUILD_DIR' | awk '{print $3}')
-          cp -R "$BUILD_DIR/Release/"* build-artifacts/Release/
-        shell: bash
-
-      - name: Upload Debug Build Artifacts
+      - name: Upload Build Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: AirSync-Debug
-          path: build-artifacts/Debug
-
-      - name: Upload Release Build Artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: AirSync-Release
-          path: build-artifacts/Release
+          name: AirSync-Self-Compiled
+          path: build-artifacts
