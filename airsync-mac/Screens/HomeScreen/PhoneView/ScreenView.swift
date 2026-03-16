@@ -9,36 +9,48 @@ import SwiftUI
 
 struct ScreenView: View {
     @ObservedObject var appState = AppState.shared
+    @State private var showingPlusPopover = false
+
     var body: some View {
-        VStack{
+        VStack {
+            ConnectionStatusPill()
+                .padding(.top, 4)
+            
             ConnectionStateView()
-                .padding(.top, 12)
+                .padding(.top, 4)
 
             Spacer()
 
-            TimeView()
-                .transition(.opacity.combined(with: .scale))
-
+                TimeView()
             Spacer()
+
+            if appState.adbConnected {
+                RecentAppsGridView()
+                    .transition(.asymmetric(
+                        insertion: .opacity.combined(with: .scale(scale: 0.9)),
+                        removal: .opacity.combined(with: .scale(scale: 1.1))
+                    ))
+            }
+            
+
 
             if appState.device != nil {
 
                 HStack(spacing: 10){
                     GlassButtonView(
                         label: "Send",
-                        systemImage: "square.and.arrow.up",
+                        systemImage: "paperplane.fill",
                         iconOnly: appState.adbConnected,
                         action: {
                             let panel = NSOpenPanel()
-                            panel.canChooseFiles = true
+                            panel.allowsMultipleSelection = true
                             panel.canChooseDirectories = false
-                            panel.allowsMultipleSelection = false
-                            panel.begin { response in
-                                if response == .OK, let url = panel.url {
-                                    DispatchQueue.global(qos: .userInitiated).async {
-                                        WebSocketServer.shared.sendFile(url: url)
-                                    }
-                                }
+                            panel.canChooseFiles = true
+                            
+                            if panel.runModal() == .OK {
+                                QuickShareManager.shared.transferURLs = panel.urls
+                                QuickShareManager.shared.startDiscovery()
+                                appState.showingQuickShareTransfer = true
                             }
                         }
                     )
@@ -47,6 +59,27 @@ struct ScreenView: View {
                         "f",
                         modifiers: .command
                     )
+
+                    GlassButtonView(
+                        label: "Browse",
+                        systemImage: "folder",
+                        iconOnly: true,
+                        action: {
+                            if appState.isPlus && appState.licenseCheck {
+                                appState.openFileBrowser()
+                            } else {
+                                showingPlusPopover = true
+                            }
+                        }
+                    )
+                    .transition(.identity)
+                    .keyboardShortcut(
+                        "b",
+                        modifiers: .command
+                    )
+                    .popover(isPresented: $showingPlusPopover, arrowEdge: .bottom) {
+                        PlusFeaturePopover(message: "Browse files with AirSync+")
+                    }
 
 
                     if appState.adbConnected{

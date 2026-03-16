@@ -9,20 +9,25 @@ struct SettingsView: View {
     @State private var port: String = "6996"
     @State private var availableAdapters: [(name: String, address: String)] = []
     @State private var currentIPAddress: String = "N/A"
+    @State private var showRemoteSheet = false
 
 
     var body: some View {
             ScrollView {
-                VStack {
-                    // Device Name Field
-                    DeviceNameView(deviceName: $deviceName)
+                VStack(alignment: .leading, spacing: 20) {
+                    // 1. Device
+                    VStack {
+                        DeviceNameView(deviceName: $deviceName)
+                    }
+                    .padding()
                     .background(.background.opacity(0.3))
                     .cornerRadius(12.0)
 
-                    // Info Section
-                    VStack {
+                    // 2. Server
+                    headerSection(title: "Server", icon: "server.rack")
+                    VStack(spacing: 12) {
                         HStack {
-                            Label("Network", systemImage: "rectangle.connected.to.line.below")
+                            Label("Network Adapter", systemImage: "rectangle.connected.to.line.below")
                             Spacer()
 
                             Picker("", selection: Binding(
@@ -41,23 +46,21 @@ struct SettingsView: View {
                             currentIPAddress = WebSocketServer.shared.getLocalIPAddress(adapterName: appState.selectedNetworkAdapterName) ?? "N/A"
                         }
                         .onChange(of: appState.selectedNetworkAdapterName) { _, _ in
-                            // Update IP address immediately
                             currentIPAddress = WebSocketServer.shared.getLocalIPAddress(adapterName: appState.selectedNetworkAdapterName) ?? "N/A"
-
                             WebSocketServer.shared.stop()
                             if let port = UInt16(port) {
                                 WebSocketServer.shared.start(port: port)
                             } else {
                                 WebSocketServer.shared.start()
                             }
-                            // Refresh QR code since IP address may have changed
                             appState.shouldRefreshQR = true
                         }
 
                         ConnectionInfoText(
                             label: "IP Address",
                             icon: "wifi",
-                            text: currentIPAddress
+                            text: currentIPAddress,
+                            activeIp: appState.activeMacIp
                         )
 
                         HStack {
@@ -83,9 +86,8 @@ struct SettingsView: View {
                     .background(.background.opacity(0.3))
                     .cornerRadius(12.0)
 
-                    HStack{
+                    HStack {
                         Spacer()
-
                         SaveAndRestartButton(
                             title: "Save and Restart the Server",
                             systemImage: "square.and.arrow.down.badge.checkmark",
@@ -97,21 +99,59 @@ struct SettingsView: View {
                         )
                     }
 
-                    Spacer(minLength: 32)
-
-
+                    // 2. Features
+                    headerSection(title: "Features", icon: "square.grid.2x2")
                     SettingsFeaturesView()
-                        .background(.background.opacity(0.3))
-                        .cornerRadius(12.0)
-
-                    Spacer(minLength: 32)
-
-                    // App icons
-                    AppIconView()
-
-
+                    
                     VStack {
+                        HStack {
+                            Label("Remote Control Permission", systemImage: "accessibility")
+                            Spacer()
+                            GlassButtonView(label: "Configure", systemImage: "gearshape"){
+                                showRemoteSheet = true
+                            }
+                        }
+                    }
+                    .padding()
+                    .background(.background.opacity(0.3))
+                    .cornerRadius(12.0)
+                    .sheet(isPresented: $showRemoteSheet) {
+                        RemotePermissionView()
+                    }
 
+
+                    // 3. Quick Share
+                    headerSection(title: "Quick Share", icon: "laptopcomputer.and.arrow.down")
+                    VStack {
+                        HStack {
+                            Label(Localizer.shared.text("quickshare.title"), systemImage: "bolt.horizontal.circle")
+                            Spacer()
+                            Toggle("", isOn: $appState.quickShareEnabled)
+                                .toggleStyle(.switch)
+                        }
+
+                        if appState.quickShareEnabled {
+                            Text(String(format: Localizer.shared.text("quickshare.settings.discoverable"), QuickShareManager.shared.deviceName))
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+
+                            HStack {
+                                Label(Localizer.shared.text("quickshare.settings.autoAccept"), systemImage: "checkmark.shield")
+                                Spacer()
+                                Toggle("", isOn: $appState.autoAcceptQuickShare)
+                                    .toggleStyle(.switch)
+                            }
+
+                        }
+                    }
+                    .padding()
+                    .background(.background.opacity(0.3))
+                    .cornerRadius(12.0)
+
+                    // 4. Appearance
+                    headerSection(title: "Appearance", icon: "paintbrush")
+                    VStack(spacing: 12) {
                         HStack{
                             Label("Liquid Opacity", systemImage: "app.background.dotted")
                             Spacer()
@@ -119,7 +159,7 @@ struct SettingsView: View {
                                 value: $appState.windowOpacity,
                                 in: 0...1.0
                             )
-                            .frame(width: 200)
+                            .frame(width: 150)
                         }
 
                         HStack{
@@ -140,70 +180,68 @@ struct SettingsView: View {
                     .background(.background.opacity(0.3))
                     .cornerRadius(12.0)
 
-                    VStack {
-
+                    // 4. Menu Bar
+                    headerSection(title: "Menu Bar", icon: "menubar.arrow.up.rectangle")
+                    VStack(spacing: 12) {
                         HStack{
-                            Label("Menubar text", systemImage: "menubar.arrow.up.rectangle")
+                            Label("Show Menu Bar Text", systemImage: "text.alignleft")
                             Spacer()
                             Toggle("", isOn: $appState.showMenubarText)
                                 .toggleStyle(.switch)
                         }
 
                         if appState.showMenubarText {
-                            HStack {
-                                Label("Menubar Text length", systemImage: "textformat.123")
-                                Spacer()
-                                Slider(
-                                    value: Binding(
-                                        get: { Double(appState.menubarTextMaxLength) },
-                                        set: { appState.menubarTextMaxLength = Int($0) }
-                                    ),
-                                    in: 10...80,
-                                    step: 5
-                                )
-                                .frame(width: 200)
-                                .controlSize(.small)
-                            }
-                            .transition(.opacity.combined(with: .move(edge: .top)))
-                            .animation(.easeInOut(duration: 0.3), value: appState.showMenubarText)
-
-                            HStack{
-                                Label {
-                                    Text("Show device name")
-                                } icon: {
-                                    Image(systemName: "iphone.gen3")
-                                        .imageScale(.medium)
-                                        .frame(width: 18, alignment: .center)
+                            VStack(spacing: 12) {
+                                
+                                HStack {
+                                    Label("Max Length", systemImage: "arrow.left.and.right")
+                                    Spacer()
+                                    Slider(
+                                        value: Binding(
+                                            get: { Double(appState.menubarTextMaxLength) },
+                                            set: { appState.menubarTextMaxLength = Int($0) }
+                                        ),
+                                        in: 10...80,
+                                        step: 5
+                                    )
+                                    .frame(width: 150)
+                                    .controlSize(.small)
                                 }
-                                Spacer()
-                                Toggle("", isOn: $appState.showMenubarDeviceName)
-                                    .toggleStyle(.switch)
+
+                                HStack{
+                                    Label("Show Device Name", systemImage: "iphone.gen3")
+                                    Spacer()
+                                    Toggle("", isOn: $appState.showMenubarDeviceName)
+                                        .toggleStyle(.switch)
+                                }
                             }
                             .transition(.opacity.combined(with: .move(edge: .top)))
-                            .animation(.easeInOut(duration: 0.3), value: appState.showMenubarText)
-
                         }
                     }
                     .padding()
                     .background(.background.opacity(0.3))
                     .cornerRadius(12.0)
 
-                    VStack {
+                    // 5. Application
+                    headerSection(title: "Application", icon: "app.badge")
+                    VStack(spacing: 12) {
                         SettingsToggleView(name: "Check for updates automatically", icon: "sparkles", isOn: $automaticallyChecksForUpdates)
                         SettingsToggleView(name: "Download updates automatically", icon: "arrow.down.circle", isOn: $automaticallyDownloadsUpdates)
+                        SettingsToggleView(name: "Crash reporting", icon: "ant", isOn: $appState.isCrashReportingEnabled)
                     }
                     .padding()
                     .background(.background.opacity(0.3))
                     .cornerRadius(12.0)
 
-                    Spacer(minLength: 32)
-
+                    // 6. AirSync+
+                    headerSection(title: "AirSync+", icon: "plus.diamond.fill")
                     SettingsPlusView()
                         .padding()
                         .background(.background.opacity(0.3))
                         .cornerRadius(12.0)
                 }
                 .padding()
+                .animation(.spring(), value: appState.showMenubarText)
 
             }
         .frame(minWidth: 300)
@@ -220,4 +258,17 @@ struct SettingsView: View {
         }
     }
 
+
+    @ViewBuilder
+    private func headerSection(title: String, icon: String) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: icon)
+                .foregroundStyle(Color.accentColor)
+            Text(title)
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(.secondary)
+            Spacer()
+        }
+        .padding(.horizontal, 8)
+    }
 }

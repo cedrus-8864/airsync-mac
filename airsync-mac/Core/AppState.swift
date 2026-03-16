@@ -7,17 +7,22 @@
 import SwiftUI
 import Foundation
 import Cocoa
-internal import Combine
+import Combine
 import UserNotifications
 import AVFoundation
 
 class AppState: ObservableObject {
     static let shared = AppState()
 
+    enum ADBConnectionMode: String, Codable {
+        case wireless
+        case wired
+    }
+
     private var clipboardCancellable: AnyCancellable?
     private var lastClipboardValue: String? = nil
     private var shouldSkipSave = false
-    private let licenseDetailsKey = "licenseDetails"
+    private static let licenseDetailsKey = "licenseDetails"
 
     @Published var isOS26: Bool = true
 
@@ -26,59 +31,72 @@ class AppState: ObservableObject {
         self.isPlus = true
         // self.isPlus = UserDefaults.standard.bool(forKey: "isPlus")
 
-        // Load from UserDefaults
-        let name = UserDefaults.standard.string(forKey: "deviceName") ?? (Host.current().localizedName ?? "My Mac")
-        let portString = UserDefaults.standard.string(forKey: "devicePort") ?? String(Defaults.serverPort)
-        let port = Int(portString) ?? Int(Defaults.serverPort)
         let adbPortValue = UserDefaults.standard.integer(forKey: "adbPort")
-        let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "2.0.0"
-
         self.adbPort = adbPortValue == 0 ? 5555 : UInt16(adbPortValue)
         self.adbConnectedIP = UserDefaults.standard.string(forKey: "adbConnectedIP") ?? ""
         self.mirroringPlus = UserDefaults.standard.bool(forKey: "mirroringPlus")
         self.adbEnabled = UserDefaults.standard.bool(forKey: "adbEnabled")
+        self.wiredAdbEnabled = UserDefaults.standard.bool(forKey: "wiredAdbEnabled")
         self.suppressAdbFailureAlerts = UserDefaults.standard.bool(forKey: "suppressAdbFailureAlerts")
 
         let savedFallbackToMdns = UserDefaults.standard.object(forKey: "fallbackToMdns")
         self.fallbackToMdns = savedFallbackToMdns == nil ? true : UserDefaults.standard.bool(forKey: "fallbackToMdns")
 
         self.showMenubarText = UserDefaults.standard.bool(forKey: "showMenubarText")
-
-        // Default to true if not previously set
-        let showNameObj = UserDefaults.standard.object(forKey: "showMenubarDeviceName")
-        self.showMenubarDeviceName = showNameObj == nil
-            ? true
-            : UserDefaults.standard.bool(forKey: "showMenubarDeviceName")
+        self.showMenubarDeviceName = UserDefaults.standard.object(forKey: "showMenubarDeviceName") == nil ? true : UserDefaults.standard.bool(forKey: "showMenubarDeviceName")
 
         let savedMaxLength = UserDefaults.standard.integer(forKey: "menubarTextMaxLength")
         self.menubarTextMaxLength = savedMaxLength > 0 ? savedMaxLength : 30
 
         self.isClipboardSyncEnabled = UserDefaults.standard.bool(forKey: "isClipboardSyncEnabled")
-        self.windowOpacity = UserDefaults.standard
-            .double(forKey: "windowOpacity")
-        self.hideDockIcon = UserDefaults.standard
-            .bool(forKey: "hideDockIcon")
-        self.alwaysOpenWindow = UserDefaults.standard
-            .bool(forKey: "alwaysOpenWindow")
-        self.notificationSound = UserDefaults.standard
-            .string(forKey: "notificationSound") ?? "default"
-        self.dismissNotif = UserDefaults.standard
-            .bool(forKey: "dismissNotif")
+        self.windowOpacity = UserDefaults.standard.double(forKey: "windowOpacity")
+        self.hideDockIcon = UserDefaults.standard.bool(forKey: "hideDockIcon")
+        self.alwaysOpenWindow = UserDefaults.standard.bool(forKey: "alwaysOpenWindow")
+        self.notificationSound = UserDefaults.standard.string(forKey: "notificationSound") ?? "default"
+        self.dismissNotif = UserDefaults.standard.bool(forKey: "dismissNotif")
 
-        let savedNotificationMode = UserDefaults.standard
-            .string(forKey: "callNotificationMode") ?? CallNotificationMode.popup.rawValue
+        self.autoAcceptQuickShare = UserDefaults.standard.bool(forKey: "autoAcceptQuickShare")
+        self.quickShareEnabled = UserDefaults.standard.object(forKey: "quickShareEnabled") == nil ? true : UserDefaults.standard.bool(forKey: "quickShareEnabled")
+
+        let savedNotificationMode = UserDefaults.standard.string(forKey: "callNotificationMode") ?? CallNotificationMode.popup.rawValue
         self.callNotificationMode = CallNotificationMode(rawValue: savedNotificationMode) ?? .popup
 
-        // Default to true for ring for calls
-        let savedRingForCalls = UserDefaults.standard.object(forKey: "ringForCalls")
-        self.ringForCalls = savedRingForCalls == nil ? true : UserDefaults.standard.bool(forKey: "ringForCalls")
-
-        // Default to true for backward compatibility - existing behavior should continue
-        let savedNowPlayingStatus = UserDefaults.standard.object(forKey: "sendNowPlayingStatus")
-        self.sendNowPlayingStatus = savedNowPlayingStatus == nil ? true : UserDefaults.standard.bool(forKey: "sendNowPlayingStatus")
-
-        // Auto-open links defaults to false
+        self.ringForCalls = UserDefaults.standard.object(forKey: "ringForCalls") == nil ? true : UserDefaults.standard.bool(forKey: "ringForCalls")
+        self.sendNowPlayingStatus = UserDefaults.standard.object(forKey: "sendNowPlayingStatus") == nil ? true : UserDefaults.standard.bool(forKey: "sendNowPlayingStatus")
         self.autoOpenLinks = UserDefaults.standard.bool(forKey: "autoOpenLinks")
+
+        var bRate = UserDefaults.standard.integer(forKey: "scrcpyBitrate")
+        if bRate == 0 { bRate = 4 }
+        self.scrcpyBitrate = bRate
+
+        var res = UserDefaults.standard.integer(forKey: "scrcpyResolution")
+        if res == 0 { res = 1200 }
+        self.scrcpyResolution = res
+
+        self.useADBWhenPossible = UserDefaults.standard.object(forKey: "useADBWhenPossible") == nil ? true : UserDefaults.standard.bool(forKey: "useADBWhenPossible")
+        self.isMusicCardHidden = UserDefaults.standard.bool(forKey: "isMusicCardHidden")
+
+        self.isCrashReportingEnabled = UserDefaults.standard.object(forKey: "isCrashReportingEnabled") == nil ? true : UserDefaults.standard.bool(forKey: "isCrashReportingEnabled")
+
+        let savedAdapterName = UserDefaults.standard.string(forKey: "selectedNetworkAdapterName")
+        let validatedAdapter = AppState.validateAndGetNetworkAdapter(savedName: savedAdapterName)
+        self.selectedNetworkAdapterName = validatedAdapter
+
+        let adapterIP = WebSocketServer.shared.getLocalIPAddress(adapterName: validatedAdapter) ?? "N/A"
+        let deviceName = UserDefaults.standard.string(forKey: "deviceName") ?? (Host.current().localizedName ?? "My Mac")
+        let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "2.0.0"
+        let portNumStr = UserDefaults.standard.string(forKey: "devicePort") ?? String(Defaults.serverPort)
+        let portNum = Int(portNumStr) ?? Int(Defaults.serverPort)
+
+        self.myDevice = Device(
+            name: deviceName,
+            ipAddress: adapterIP,
+            port: portNum,
+            version: appVersion,
+            adbPorts: []
+        )
+
+        self.licenseDetails = AppState.loadLicenseDetailsFromUserDefaults()
 
         if isClipboardSyncEnabled {
             startClipboardMonitoring()
@@ -94,37 +112,11 @@ class AppState: ObservableObject {
         }
         #endif
 
-        self.scrcpyBitrate = UserDefaults.standard.integer(forKey: "scrcpyBitrate")
-        if self.scrcpyBitrate == 0 { self.scrcpyBitrate = 4 }
-
-        self.scrcpyResolution = UserDefaults.standard.integer(forKey: "scrcpyResolution")
-        if self.scrcpyResolution == 0 { self.scrcpyResolution = 1200 }
-
-    // Initialize persisted UI toggles
-    self.isMusicCardHidden = UserDefaults.standard.bool(forKey: "isMusicCardHidden")
-
-
-        // Load and validate saved network adapter
-        let savedAdapterName = UserDefaults.standard.string(forKey: "selectedNetworkAdapterName")
-        self.selectedNetworkAdapterName = validateAndGetNetworkAdapter(savedName: savedAdapterName)
-
-        self.myDevice = Device(
-            name: name,
-            ipAddress: WebSocketServer.shared
-                .getLocalIPAddress(
-                    adapterName: selectedNetworkAdapterName
-                ) ?? "N/A",
-            port: port,
-            version:appVersion,
-            adbPorts: []
-        )
-        self.licenseDetails = loadLicenseDetailsFromUserDefaults()
-
         loadAppsFromDisk()
         loadPinnedApps()
-        // QuickConnectManager handles its own initialization
 
-//        postNativeNotification(id: "test_notification", appName: "AirSync Beta", title: "Hi there! (っ◕‿◕)っ", body: "Welcome to and thanks for testing out the app. Please don't forget to report issues to mail@sameerasw.com or any other community you prefer. <3", appIcon: nil)
+        // Ensure dock icon visibility is applied on launch
+        updateDockIconVisibility()
     }
 
     @Published var minAndroidVersion = Bundle.main.infoDictionary?["AndroidVersion"] as? String ?? "2.0.0"
@@ -136,17 +128,21 @@ class AppState: ObservableObject {
                 QuickConnectManager.shared.saveLastConnectedDevice(newDevice)
                 // Validate pinned apps when connecting to a device
                 validatePinnedApps()
+                loadRecentApps()
+            } else {
+                recentApps = []
             }
 
             // Automatically switch to the appropriate tab when device connection state changes
             if device == nil {
-                selectedTab = .qr
-            } else {
-                selectedTab = .notifications
+                self.selectedTab = .qr
+            } else if oldValue == nil {
+                self.selectedTab = .notifications
             }
         }
     }
     @Published var notifications: [Notification] = []
+    @Published var activeMacIp: String? = nil
     @Published var callEvents: [CallEvent] = []
     @Published var activeCall: CallEvent? = nil
     @Published var status: DeviceStatus? = nil
@@ -175,9 +171,26 @@ class AppState: ObservableObject {
     @Published var webSocketStatus: WebSocketStatus = .stopped
     @Published var selectedTab: TabIdentifier = .qr
 
-    @Published var adbConnected: Bool = false
+    @Published var adbConnected: Bool = false {
+        didSet {
+            if !adbConnected {
+                adbConnectionMode = nil
+            }
+        }
+    }
     @Published var adbConnecting: Bool = false
+    @Published var manualAdbConnectionPending: Bool = false
     @Published var currentDeviceWallpaperBase64: String? = nil
+    @Published var isMenubarWindowOpen: Bool = false
+    @Published var adbConnectionMode: ADBConnectionMode? = nil
+
+    @Published var recentApps: [AndroidApp] = []
+
+    var isConnectedOverLocalNetwork: Bool {
+        guard let ip = device?.ipAddress else { return true }
+        // Tailscale IPs usually start with 100.
+        return !ip.hasPrefix("100.")
+    }
 
     // Audio player for ringtone
     private var ringtonePlayer: AVAudioPlayer?
@@ -248,6 +261,11 @@ class AppState: ObservableObject {
             UserDefaults.standard.set(adbEnabled, forKey: "adbEnabled")
         }
     }
+    @Published var wiredAdbEnabled: Bool {
+        didSet {
+            UserDefaults.standard.set(wiredAdbEnabled, forKey: "wiredAdbEnabled")
+        }
+    }
 
     @Published var suppressAdbFailureAlerts: Bool {
         didSet {
@@ -310,9 +328,27 @@ class AppState: ObservableObject {
         }
     }
 
+    @Published var autoAcceptQuickShare: Bool {
+        didSet {
+            UserDefaults.standard.set(autoAcceptQuickShare, forKey: "autoAcceptQuickShare")
+        }
+    }
+
+    @Published var quickShareEnabled: Bool {
+        didSet {
+            UserDefaults.standard.set(quickShareEnabled, forKey: "quickShareEnabled")
+        }
+    }
+
     @Published var sendNowPlayingStatus: Bool {
         didSet {
             UserDefaults.standard.set(sendNowPlayingStatus, forKey: "sendNowPlayingStatus")
+        }
+    }
+
+    @Published var useADBWhenPossible: Bool {
+        didSet {
+            UserDefaults.standard.set(useADBWhenPossible, forKey: "useADBWhenPossible")
         }
     }
 
@@ -320,6 +356,12 @@ class AppState: ObservableObject {
     @Published var isMusicCardHidden: Bool = false {
         didSet {
             UserDefaults.standard.set(isMusicCardHidden, forKey: "isMusicCardHidden")
+        }
+    }
+
+    @Published var isCrashReportingEnabled: Bool {
+        didSet {
+            UserDefaults.standard.set(isCrashReportingEnabled, forKey: "isCrashReportingEnabled")
         }
     }
 
@@ -333,8 +375,25 @@ class AppState: ObservableObject {
         }
     }
 
-    // File transfer tracking state
-    @Published var transfers: [String: FileTransferSession] = [:]
+    // File browser state
+    @Published var showFileBrowser: Bool = false
+    @Published var browsePath: String = "/sdcard/"
+    @Published var browseItems: [FileBrowserItem] = []
+    @Published var isBrowsingLoading: Bool = false
+    @Published var browseError: String? = nil
+
+    // ADB Transfer Progress
+    @Published var isADBTransferring: Bool = false
+    @Published var adbTransferringFilePath: String? = nil
+    @Published var showingQuickShareTransfer = false
+
+    @Published var showHiddenFiles: Bool = false {
+        didSet {
+            // refresh current directory when hidden files toggle changes
+            fetchDirectory(path: browsePath)
+        }
+    }
+
 
     // Toggle licensing
     let licenseCheck: Bool = true
@@ -610,14 +669,86 @@ class AppState: ObservableObject {
 
             // Then locally reset state
             self.device = nil
+            self.activeMacIp = nil
             self.notifications.removeAll()
             self.status = nil
             self.currentDeviceWallpaperBase64 = nil
-            self.transfers = [:]
+
+            // Clean up Quick Share state
+            if QuickShareManager.shared.transferState != .idle {
+                QuickShareManager.shared.transferState = .idle
+            }
 
             if self.adbConnected {
                 ADBConnector.disconnectADB()
             }
+
+            self.showFileBrowser = false
+            self.browseItems.removeAll()
+        }
+    }
+
+    // MARK: - Remote File Browser
+
+    func openFileBrowser() {
+        showFileBrowser = true
+        fetchDirectory(path: "/sdcard/")
+    }
+
+    func fetchDirectory(path: String) {
+        // Only fetch if connected
+        guard device != nil else { return }
+
+        isBrowsingLoading = true
+        // Keep the path updated immediately for UI responsiveness
+        browsePath = path
+        WebSocketServer.shared.sendBrowseRequest(path: path, showHidden: showHiddenFiles)
+    }
+
+    func pullFile(path: String) {
+        if useADBWhenPossible && adbConnected {
+            ADBConnector.pull(remotePath: path)
+        } else {
+            WebSocketServer.shared.sendPullRequest(path: path)
+        }
+    }
+
+    func pullFolder(path: String) {
+        if useADBWhenPossible && adbConnected {
+            ADBConnector.pull(remotePath: path)
+        }
+    }
+
+    func pushItem(at url: URL, to remotePath: String) {
+        let isDirectory = (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory ?? false
+
+        if useADBWhenPossible && adbConnected {
+            ADBConnector.push(localPath: url.path, remotePath: remotePath) { success in
+                if success {
+                    // Refresh current directory
+                    self.fetchDirectory(path: self.browsePath)
+                }
+            }
+        } else {
+            if isDirectory {
+                print("[state] Network transfer does not support folders.")
+            } else {
+                WebSocketServer.shared.sendFile(url: url)
+            }
+        }
+    }
+
+    func navigateUp() {
+        // Prevent going above /sdcard/
+        guard browsePath != "/sdcard/" && browsePath != "/sdcard" else { return }
+
+        var components = browsePath.split(separator: "/").map(String.init)
+        if components.count > 1 {
+            components.removeLast()
+            let parent = "/" + components.joined(separator: "/") + "/"
+            fetchDirectory(path: parent)
+        } else {
+            fetchDirectory(path: "/sdcard/")
         }
     }
 
@@ -626,20 +757,23 @@ class AppState: ObservableObject {
             withAnimation {
                 self.notifications.insert(notif, at: 0)
             }
-            // Trigger native macOS notification
-            var appIcon: NSImage? = nil
-            if let iconPath = self.androidApps[notif.package]?.iconUrl {
-                appIcon = NSImage(contentsOfFile: iconPath)
+            // Trigger native macOS notification if not silent
+            // Default to alerting if priority is missing (backwards compatibility)
+            if notif.priority != "silent" {
+                var appIcon: NSImage? = nil
+                if let iconPath = self.androidApps[notif.package]?.iconUrl {
+                    appIcon = NSImage(contentsOfFile: iconPath)
+                }
+                self.postNativeNotification(
+                    id: notif.nid,
+                    appName: notif.app,
+                    title: notif.title,
+                    body: notif.body,
+                    appIcon: appIcon,
+                    package: notif.package,
+                    actions: notif.actions
+                )
             }
-            self.postNativeNotification(
-                id: notif.nid,
-                appName: notif.app,
-                title: notif.title,
-                body: notif.body,
-                appIcon: appIcon,
-                package: notif.package,
-                actions: notif.actions
-            )
         }
     }
 
@@ -758,8 +892,9 @@ class AppState: ObservableObject {
             let systemNIDs = Set(systemNotifs.map { $0.request.identifier })
 
             DispatchQueue.main.async {
-                let currentNIDs = Set(self.notifications.map { $0.nid })
-                let removedNIDs = currentNIDs.subtracting(systemNIDs)
+                // Only sync notifications that were actually posted to system (non-silent)
+                let currentSystemNIDs = Set(self.notifications.filter { $0.priority != "silent" }.map { $0.nid })
+                let removedNIDs = currentSystemNIDs.subtracting(systemNIDs)
 
                 for nid in removedNIDs {
                     print("[state] (notification) System notification \(nid) was dismissed manually.")
@@ -860,19 +995,19 @@ class AppState: ObservableObject {
 
     private func saveLicenseDetailsToUserDefaults() {
         guard let details = licenseDetails else {
-            UserDefaults.standard.removeObject(forKey: licenseDetailsKey)
+            UserDefaults.standard.removeObject(forKey: AppState.licenseDetailsKey)
             return
         }
 
         do {
             let data = try JSONEncoder().encode(details)
-            UserDefaults.standard.set(data, forKey: licenseDetailsKey)
+            UserDefaults.standard.set(data, forKey: AppState.licenseDetailsKey)
         } catch {
             print("[state] (license) Failed to encode license details: \(error)")
         }
     }
 
-    private func loadLicenseDetailsFromUserDefaults() -> LicenseDetails? {
+    private static func loadLicenseDetailsFromUserDefaults() -> LicenseDetails? {
         guard let data = UserDefaults.standard.data(forKey: licenseDetailsKey) else {
             return nil
         }
@@ -964,6 +1099,55 @@ class AppState: ObservableObject {
         }
     }
 
+    // MARK: - Recent Apps Tracking
+
+    func trackAppUse(_ app: AndroidApp) {
+        DispatchQueue.main.async {
+            self.recentApps.removeAll { $0.packageName == app.packageName }
+
+            self.recentApps.insert(app, at: 0)
+
+            if self.recentApps.count > 9 {
+                self.recentApps = Array(self.recentApps.prefix(9))
+            }
+
+            self.saveRecentApps()
+        }
+    }
+
+    private func saveRecentApps() {
+        guard let deviceName = device?.name else { return }
+        do {
+            let data = try JSONEncoder().encode(recentApps)
+            UserDefaults.standard.set(data, forKey: "recentApps_\(deviceName)")
+        } catch {
+            print("[state] (recent) Error saving recent apps: \(error)")
+        }
+    }
+
+    private func loadRecentApps() {
+        guard let deviceName = device?.name else {
+            recentApps = []
+            return
+        }
+
+        guard let data = UserDefaults.standard.data(forKey: "recentApps_\(deviceName)") else {
+            recentApps = []
+            return
+        }
+
+        do {
+            recentApps = try JSONDecoder().decode([AndroidApp].self, from: data)
+            // Filter out apps that are no longer in the androidApps list (in case they were uninstalled)
+            recentApps.removeAll { app in
+                androidApps[app.packageName] == nil
+            }
+        } catch {
+            print("[state] (recent) Error loading recent apps: \(error)")
+            recentApps = []
+        }
+    }
+
     func updateDockIconVisibility() {
         DispatchQueue.main.async {
             if self.hideDockIcon {
@@ -977,7 +1161,7 @@ class AppState: ObservableObject {
     /// Revalidates the current network adapter selection and falls back to auto if no longer valid
     func revalidateNetworkAdapter() {
         let currentSelection = selectedNetworkAdapterName
-        let validated = validateAndGetNetworkAdapter(savedName: currentSelection)
+        let validated = AppState.validateAndGetNetworkAdapter(savedName: currentSelection)
 
         if currentSelection != validated {
             print("[state] Network adapter changed from '\(currentSelection ?? "auto")' to '\(validated ?? "auto")'")
@@ -987,7 +1171,7 @@ class AppState: ObservableObject {
     }
 
     /// Validates a saved network adapter name and returns it if available with valid IP, otherwise returns nil (auto)
-    private func validateAndGetNetworkAdapter(savedName: String?) -> String? {
+    private static func validateAndGetNetworkAdapter(savedName: String?) -> String? {
         guard let savedName = savedName else {
             print("[state] No saved network adapter, using auto selection")
             return nil // Auto mode

@@ -66,21 +66,57 @@ struct MenubarView: View {
 
                     if (appState.device != nil){
                         GlassButtonView(
+                            label: "Sync Clipboard",
+                            systemImage: "doc.on.clipboard",
+                            iconOnly: true,
+                            circleSize: toolButtonSize,
+                            action: {
+                                let pasteboard = NSPasteboard.general
+                                if let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL], let firstUrl = urls.first {
+                                    DispatchQueue.global(qos: .userInitiated).async {
+                                        WebSocketServer.shared.sendFile(url: firstUrl, isClipboard: true)
+                                    }
+                                } else if let image = NSImage(pasteboard: pasteboard) {
+                                    // Handle copied image data
+                                    let tempDir = FileManager.default.temporaryDirectory
+                                    let tempUrl = tempDir.appendingPathComponent("clipboard_image_\(Int(Date().timeIntervalSince1970)).png")
+                                    if let tiffData = image.tiffRepresentation,
+                                       let bitmap = NSBitmapImageRep(data: tiffData),
+                                       let pngData = bitmap.representation(using: .png, properties: [:]) {
+                                        do {
+                                            try pngData.write(to: tempUrl)
+                                            DispatchQueue.global(qos: .userInitiated).async {
+                                                WebSocketServer.shared.sendFile(url: tempUrl, isClipboard: true)
+                                            }
+                                        } catch {
+                                            print("[MenubarView] Failed to save clipboard image: \(error)")
+                                        }
+                                    }
+                                }
+                            }
+                        )
+                        .transition(.identity)
+                        .keyboardShortcut(
+                            "v",
+                            modifiers: [.command, .shift]
+                        )
+                        
+                        GlassButtonView(
                             label: "Send",
-                            systemImage: "square.and.arrow.up",
+                            systemImage: "paperplane.fill",
                             iconOnly: true,
                             circleSize: toolButtonSize,
                             action: {
                                 let panel = NSOpenPanel()
+                                panel.allowsMultipleSelection = true
                                 panel.canChooseFiles = true
                                 panel.canChooseDirectories = false
-                                panel.allowsMultipleSelection = false
-                                panel.begin { response in
-                                    if response == .OK, let url = panel.url {
-                                        DispatchQueue.global(qos: .userInitiated).async {
-                                            WebSocketServer.shared.sendFile(url: url)
-                                        }
-                                    }
+                                
+                                if panel.runModal() == .OK {
+                                    let targetName = appState.device?.name
+                                    QuickShareManager.shared.startDiscovery(autoTargetName: targetName)
+                                    QuickShareManager.shared.transferURLs = panel.urls
+                                    appState.showingQuickShareTransfer = true
                                 }
                             }
                         )
@@ -136,8 +172,24 @@ struct MenubarView: View {
                     ) {
                         NSApplication.shared.terminate(nil)
                     }
+
+                    #if DEBUG
+                    GlassButtonView(
+                        label: "Crash",
+                        systemImage: "bolt.trianglebadge.exclamationmark",
+                        iconOnly: true,
+                        circleSize: toolButtonSize
+                    ) {
+                        fatalError("Sentry Test Crash")
+                    }
+                    #endif
                 }
                 .padding(8)
+
+                if appState.adbConnected && !appState.recentApps.isEmpty {
+                    RecentAppsGridView()
+                        .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                }
 
                 if (appState.status != nil){
                     DeviceStatusView(showMediaToggle: false)
@@ -174,6 +226,13 @@ struct MenubarView: View {
         }
         .frame(minWidth: minWidthTabs)
         .frame(maxWidth: .infinity)
+        .dropTarget(appState: appState, autoTargetName: appState.device?.name)
+        .onAppear {
+            appState.isMenubarWindowOpen = true
+        }
+        .onDisappear {
+            appState.isMenubarWindowOpen = false
+        }
     }
 }
 

@@ -6,6 +6,7 @@
 //
 import SwiftUI
 import Cocoa
+import Foundation
 
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -14,16 +15,53 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // Access the single shared AppDelegate instance
     static var shared: AppDelegate? { NSApp.delegate as? AppDelegate }
 
+    private var menuBarManager: MenuBarManager?
+
     func applicationWillTerminate() {
         AppState.shared.disconnectDevice()
-        ADBConnector.disconnectADB()
+        if AppState.shared.adbConnected {
+            ADBConnector.disconnectADB()
+        }
         WebSocketServer.shared.stop()
     }
 
-    func applicationDidFinishLaunching() {
+    func applicationDidFinishLaunching(_ notification: Foundation.Notification) {
         NSWindow.allowsAutomaticWindowTabbing = false
+        // Initialize Sentry 
+        setupSentry()
+        
         // Dock icon visibility is now controlled by AppState.hideDockIcon
         AppState.shared.updateDockIconVisibility()
+        
+        // Initialize Menu Bar Manager
+        menuBarManager = MenuBarManager.shared
+
+        // Initialize Quick Share
+        _ = QuickShareManager.shared
+        
+        // Register Services Provider
+        NSApp.servicesProvider = self
+        NSUpdateDynamicServices()
+    }
+
+    private func setupSentry() {
+        SentryInitializer.start()
+    }
+
+    func application(_ application: NSApplication, open urls: [URL]) {
+        if !urls.isEmpty {
+            QuickShareManager.shared.transferURLs = urls
+            QuickShareManager.shared.startDiscovery(autoTargetName: nil)
+            AppState.shared.showingQuickShareTransfer = true
+        }
+    }
+
+    @objc func handleServices(_ pboard: NSPasteboard, userData: String, error: AutoreleasingUnsafeMutablePointer<NSString>) {
+        if let urls = pboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL], !urls.isEmpty {
+            QuickShareManager.shared.transferURLs = urls
+            QuickShareManager.shared.startDiscovery(autoTargetName: nil)
+            AppState.shared.showingQuickShareTransfer = true
+        }
     }
 
     // Configure and retain main window when captured
@@ -33,7 +71,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             window.delegate = self
         }
         window.isReleasedWhenClosed = false
-        window.collectionBehavior.insert(.moveToActiveSpace)
+        window.isReleasedWhenClosed = false
     }
 
 

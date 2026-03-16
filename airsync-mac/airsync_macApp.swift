@@ -63,35 +63,17 @@ struct airsync_macApp: App {
         loadCachedIcons()
         loadCachedWallpapers()
 
-        // Load saved app icon preference and revert if needed based on license status
-        let appIconManager = AppIconManager()
-        appIconManager.loadCurrentIcon()
 
-        // Set up listener for license changes to revert icon if needed
-        // This will be called when license status changes
-        NotificationCenter.default.addObserver(
-            forName: NSNotification.Name("LicenseStatusChanged"),
-            object: nil,
-            queue: .main
-        ) { _ in
-            appIconManager.revertToDefaultIfNeeded()
-        }
 
         // Initialize trial manager early so entitlement state is up-to-date on launch.
         _ = TrialManager.shared
-
+        
+        // Start UDP Discovery (Active Burst + Passive Listen)
+        UDPDiscoveryManager.shared.start()
+        
     }
 
     var body: some Scene {
-        MenuBarExtra {
-            MenubarView()
-                .environmentObject(appState)
-        } label: {
-            MenuBarLabelView()
-                .environmentObject(appState)
-        }
-        .menuBarExtraStyle(.window)
-
         Window("AirSync", id: "main") {
             if #available(macOS 15.0, *) {
                 HomeView()
@@ -111,28 +93,17 @@ struct airsync_macApp: App {
                 dismissWindow(id: "callWindow")
             }
         }
-
-        // Secondary Tool Window for Calls
-        Window("Call", id: "callWindow") {
-            if let activeCall = appState.activeCall {
-                if #available(macOS 15.0, *) {
-                    CallWindowView(callEvent: activeCall)
-                        .environmentObject(appState)
-                        .containerBackground(.ultraThinMaterial, for: .window)
-                } else {
-                    CallWindowView(callEvent: activeCall)
-                        .environmentObject(appState)
-                }
+        .onChange(of: appState.showingQuickShareTransfer) { oldValue, newValue in
+            if newValue {
+                openWindow(id: "quickShareWindow")
+            } else {
+                dismissWindow(id: "quickShareWindow")
             }
         }
-        .defaultPosition(.topTrailing)
-        .defaultSize(width: 320, height: 480)
-        .windowStyle(.hiddenTitleBar)
-
-    .commands {
-        CommandGroup(after: .appInfo) {
-            CheckForUpdatesView(updater: updaterController.updater)
-        }
+        .commands {
+            CommandGroup(after: .appInfo) {
+                CheckForUpdatesView(updater: updaterController.updater)
+            }
             CommandGroup(replacing: .newItem) { }
             CommandGroup(replacing: .help) {
                 Button(action: {
@@ -143,6 +114,10 @@ struct airsync_macApp: App {
                     Text("Help")
                 })
                 .keyboardShortcut("/")
+
+                Button("Simulate crash") {
+                    fatalError("Sentry Test Crash")
+                }
             }
             // Mirror menu: launch full device mirror or specific apps via scrcpy
             CommandMenu("Mirror") {
@@ -179,8 +154,52 @@ struct airsync_macApp: App {
             }
         }
 
-    }
+        // Secondary Tool Window for Calls
+        Window("Call", id: "callWindow") {
+            if let activeCall = appState.activeCall {
+                if #available(macOS 15.0, *) {
+                    CallWindowView(callEvent: activeCall)
+                        .environmentObject(appState)
+                        .containerBackground(.ultraThinMaterial, for: .window)
+                } else {
+                    CallWindowView(callEvent: activeCall)
+                        .environmentObject(appState)
+                }
+            }
+        }
+        .defaultPosition(.topTrailing)
+        .defaultSize(width: 320, height: 480)
+        .windowStyle(.hiddenTitleBar)
 
+        // Standalone Tool Window for Quick Share
+        Window("Quick Share", id: "quickShareWindow") {
+            QuickShareTransferSheet()
+                .fixedSize()
+                .background(WindowAccessor(callback: { window in
+                    window.level = .floating
+                    window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+                    window.titleVisibility = .visible
+                    window.title = Localizer.shared.text("quickshare.title")
+                    window.titlebarAppearsTransparent = true
+                    window.isMovableByWindowBackground = true
+                    window.styleMask.remove(.resizable)
+                    window.standardWindowButton(.closeButton)?.isHidden = false
+                    window.standardWindowButton(.miniaturizeButton)?.isHidden = true
+                    window.standardWindowButton(.zoomButton)?.isHidden = true
+                    window.backgroundColor = .clear
+                    window.isOpaque = false
+                    
+                    NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: window, queue: .main) { _ in
+                        AppState.shared.showingQuickShareTransfer = false
+                        QuickShareManager.shared.stopDiscovery()
+                    }
+                }))
+        }
+        .defaultPosition(.topTrailing)
+        .windowStyle(.hiddenTitleBar)
+        .windowResizability(.contentSize)
+
+    }
 }
 
 extension View {
@@ -188,7 +207,6 @@ extension View {
         self.background(WindowAccessor(callback: { window in
             window.identifier = NSUserInterfaceItemIdentifier("main")
             appDelegate.mainWindow = window
-            window.collectionBehavior.insert(.moveToActiveSpace)
             // Make window transparent during onboarding
             if appState.isOnboardingActive {
                 window.alphaValue = 0.0

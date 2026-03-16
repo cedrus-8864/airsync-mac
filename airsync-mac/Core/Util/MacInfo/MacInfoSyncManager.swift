@@ -5,7 +5,8 @@
 //  Created by Sameera Sandakelum on 2025-09-17.
 //
 import Foundation
-internal import Combine
+import Combine
+import CryptoKit
 
 class MacInfoSyncManager: ObservableObject {
     @Published var title: String = "Unknown Title"
@@ -20,6 +21,8 @@ class MacInfoSyncManager: ObservableObject {
     private var lastSentInfo: NowPlayingInfo?
     // Snapshot of the last payload we actually sent over the wire
     private var lastSentSnapshot: Snapshot?
+    
+    private var lastSentArtworkHash: String?
 
     // Mirrors the payload fields we send so equality check is accurate and cheap
     private struct Snapshot: Equatable {
@@ -77,15 +80,18 @@ class MacInfoSyncManager: ObservableObject {
         timer = nil
 
         // Reset published properties when stopping
-        title = "Unknown Title"
-        artist = "Unknown Artist"
-        album = "Unknown Album"
-        elapsed = 0
-        duration = 0
-        isPlaying = false
-        artworkBase64 = ""
-        lastSentInfo = nil
-        lastSentSnapshot = nil
+        DispatchQueue.main.async {
+            self.title = "Unknown Title"
+            self.artist = "Unknown Artist"
+            self.album = "Unknown Album"
+            self.elapsed = 0
+            self.duration = 0
+            self.isPlaying = false
+            self.artworkBase64 = ""
+            self.lastSentInfo = nil
+            self.lastSentSnapshot = nil
+            self.lastSentArtworkHash = nil
+        }
     }
 
     private func fetch() {
@@ -179,8 +185,26 @@ class MacInfoSyncManager: ObservableObject {
         // Get battery info
         let batteryInfo = getBatteryInfo()
 
-    // Use already-updated published artwork (base64) to avoid recomputing before change check
-    let albumArtBase64 = shouldIncludeMusicInfo ? (artworkBase64.isEmpty ? nil : artworkBase64) : nil
+        let currentArtwork = artworkBase64
+        var currentHash: String? = nil
+        
+        if !currentArtwork.isEmpty {
+            let inputData = Data(currentArtwork.utf8)
+            let hashed = SHA256.hash(data: inputData)
+            currentHash = hashed.compactMap { String(format: "%02x", $0) }.joined()
+        }
+
+        let artworkToSend: String?
+        if shouldIncludeMusicInfo {
+            if currentHash != lastSentArtworkHash {
+                artworkToSend = currentArtwork.isEmpty ? "" : currentArtwork
+            } else {
+                
+                artworkToSend = nil
+            }
+        } else {
+            artworkToSend = nil
+        }
 
         // Build snapshot mirroring the payload we would send
         let musicSnapshot: Snapshot.Music? = {
@@ -189,9 +213,9 @@ class MacInfoSyncManager: ObservableObject {
                 isPlaying: info.isPlaying ?? false,
                 title: info.title ?? "",
                 artist: info.artist ?? "",
-                volume: 50, // must match payload default
-                isMuted: false, // must match payload default
-                albumArt: albumArtBase64 ?? "",
+                volume: MacRemoteManager.shared.lastVolumeLevel,
+                isMuted: MacRemoteManager.shared.lastVolumeLevel == 0,
+                albumArt: currentHash ?? "", // Use hash for snapshot comparison
                 likeStatus: "none" // must match payload default
             )
         }()
@@ -209,19 +233,24 @@ class MacInfoSyncManager: ObservableObject {
             return
         }
 
-        // Send full device status (all sections for current mode)
+        // Send full device status
         WebSocketServer.shared.sendDeviceStatus(
             batteryLevel: snapshot.batteryLevel,
             isCharging: snapshot.isCharging,
             isPaired: snapshot.isPaired,
             musicInfo: shouldIncludeMusicInfo ? info : nil,
-            albumArtBase64: albumArtBase64
+            albumArtBase64: artworkToSend
         )
         print("[mac-info-sync] Sent status \(snapshot.batteryLevel), \(snapshot.isCharging), \(info)")
 
         // Update last sent trackers
         lastSentSnapshot = snapshot
-        if shouldIncludeMusicInfo { lastSentInfo = info }
+        if shouldIncludeMusicInfo { 
+            lastSentInfo = info
+            if let sent = artworkToSend {
+                lastSentArtworkHash = sent.isEmpty ? nil : currentHash
+            }
+        }
 
         // Logging
 //        if shouldIncludeMusicInfo {

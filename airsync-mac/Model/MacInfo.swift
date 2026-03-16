@@ -9,8 +9,10 @@ import Foundation
 
 struct MacInfo: Codable {
     let name: String
+    let modelIdentifier: String
     let categoryType: String
     let exactDeviceName: String
     let isPlusSubscription: Bool
+    let version: String
     let savedAppPackages: [String]
 }
